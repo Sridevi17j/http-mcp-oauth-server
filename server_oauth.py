@@ -263,11 +263,15 @@ def validate_token(access_token: str) -> Dict[str, Any]:
 
 if __name__ == "__main__":
     print("Starting OAuth-protected MCP Server for Web Content Extraction")
-    print("Server will be available at: http://localhost:8000/mcp")
+    #print("Server will be available at: http://localhost:8000/mcp")
+    port = int(os.environ.get("PORT", 8000))
+    print(f"Server will be available at: http://0.0.0.0:{port}/mcp")
     print("Available tools:")
     print("  - extract_web_content_oauth: OAuth-protected content extraction")
     print("  - extract_web_content: Non-protected content extraction (testing)")
     print("  - validate_token: Validate Auth0 JWT tokens")
     print("Starting with streamable-http transport...")
     
-    mcp.run(transport="streamable-http")
+    #mcp.run(transport="streamable-http")
+    port = int(os.environ.get("PORT", 8000))
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)
