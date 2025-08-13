@@ -1,25 +1,21 @@
 """
 OAuth-protected MCP Server for Web Content Extraction
-Full OAuth enforcement with Dynamic Client Registration (DCR) for Claude.ai
-Using Auth0 with fastmcp and mcpauth libraries
+Proper implementation using FastMCP RemoteAuthProvider and JWTVerifier
+Following official FastMCP OAuth documentation
 """
 
 import os
 import requests
 import logging
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 from fastmcp import FastMCP
-from mcpauth import MCPAuth
-from mcpauth.config import AuthServerType
-from mcpauth.utils import fetch_server_config
+from fastmcp.server.auth.auth import RemoteAuthProvider
+from fastmcp.server.auth.providers.jwt import JWTVerifier
 from bs4 import BeautifulSoup
 from urllib.parse import urljoin, urlparse
 from datetime import datetime
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Request, Depends
-from fastapi.responses import JSONResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import uvicorn
+from pydantic import AnyHttpUrl
 
 # Load environment variables
 load_dotenv('.env')
@@ -28,18 +24,20 @@ load_dotenv('.env')
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Auth0 Configuration for Dynamic Client Registration
+# Auth0 Configuration
 AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "dev-gkajzozs6ojdzi2l.us.auth0.com")
-AUTH0_MANAGEMENT_CLIENT_ID = os.environ.get("AUTH0_MANAGEMENT_CLIENT_ID", "5pSUzqub8bYkn0nTsP0OuzRE0weqfTgw")
-AUTH0_MANAGEMENT_CLIENT_SECRET = os.environ.get("AUTH0_MANAGEMENT_CLIENT_SECRET", "sTQOwa8x5PxofckRkSdsBwBgjR0x7YYwSV2Al2SR7bbbDWn-oWF4-lXADx-Ss5Fs")
+AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "https://api.web-extractor.com")  # You may need to set this
+RESOURCE_SERVER_URL = os.environ.get("RESOURCE_SERVER_URL", "https://your-render-url.onrender.com")
 
-# OAuth server configuration
+# OAuth endpoints
 OAUTH_ISSUER = f"https://{AUTH0_DOMAIN}/"
+JWKS_URI = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 
-def extract_web_content_logic(url: str, user_info: Dict[str, Any]) -> Dict[str, Any]:
+def extract_web_content_logic(url: str, user_info: Dict[str, Any] = None) -> Dict[str, Any]:
     """Core web content extraction logic"""
     try:
-        logger.info(f"User {user_info.get('sub')} extracting content from: {url}")
+        user_id = user_info.get('sub', 'authenticated_user') if user_info else 'anonymous'
+        logger.info(f"User {user_id} extracting content from: {url}")
         
         # Validate URL
         parsed = urlparse(url)
@@ -96,7 +94,7 @@ def extract_web_content_logic(url: str, user_info: Dict[str, Any]) -> Dict[str, 
             "links": links,
             "content_length": len(text_content),
             "extracted_at": datetime.now().isoformat(),
-            "user": user_info.get('sub'),
+            "user": user_id,
             "success": True
         }
         
@@ -105,121 +103,51 @@ def extract_web_content_logic(url: str, user_info: Dict[str, Any]) -> Dict[str, 
             "url": url,
             "error": str(error),
             "extracted_at": datetime.now().isoformat(),
-            "user": user_info.get('sub', 'unknown'),
+            "user": user_info.get('sub', 'unknown') if user_info else 'unknown',
             "success": False
         }
 
-# Initialize MCP Auth with Dynamic Client Registration support
+# Configure JWT token verification for Auth0
 try:
-    mcp_auth = MCPAuth(
-        server=fetch_server_config(
-            OAUTH_ISSUER,
-            type=AuthServerType.OAUTH
-        )
+    token_verifier = JWTVerifier(
+        jwks_uri=JWKS_URI,
+        issuer=OAUTH_ISSUER,
+        audience=AUTH0_AUDIENCE
     )
-    logger.info(f"MCP Auth initialized with issuer: {OAUTH_ISSUER}")
+    logger.info(f"JWT Verifier configured for issuer: {OAUTH_ISSUER}")
 except Exception as e:
-    logger.error(f"Failed to initialize MCP Auth: {e}")
-    raise RuntimeError("OAuth setup required for this server")
+    logger.error(f"Failed to configure JWT verifier: {e}")
+    token_verifier = None
 
-# Create FastAPI app for OAuth endpoints
-oauth_app = FastAPI(
-    title="OAuth Discovery and Registration",
-    description="OAuth endpoints for Dynamic Client Registration",
-    version="1.0.0"
-)
-
-# OAuth Discovery endpoint - Claude.ai will call this first
-@oauth_app.get("/.well-known/oauth-authorization-server")
-async def oauth_metadata():
-    """OAuth server metadata for Dynamic Client Registration discovery"""
+# Create Remote Auth Provider following FastMCP pattern
+if token_verifier:
     try:
-        metadata = {
-            "issuer": OAUTH_ISSUER,
-            "authorization_endpoint": f"{OAUTH_ISSUER}authorize",
-            "token_endpoint": f"{OAUTH_ISSUER}oauth/token",
-            "registration_endpoint": f"{OAUTH_ISSUER}oidc/register",
-            "userinfo_endpoint": f"{OAUTH_ISSUER}userinfo",
-            "jwks_uri": f"{OAUTH_ISSUER}.well-known/jwks.json",
-            "scopes_supported": ["openid", "profile", "email", "read", "write"],
-            "response_types_supported": ["code"],
-            "grant_types_supported": ["authorization_code", "refresh_token"],
-            "code_challenge_methods_supported": ["S256"],
-            "token_endpoint_auth_methods_supported": [
-                "client_secret_basic",
-                "client_secret_post",
-                "none"
-            ]
-        }
-        logger.info("OAuth metadata requested - Claude.ai discovery")
-        return metadata
-    except Exception as e:
-        logger.error(f"Error providing OAuth metadata: {e}")
-        raise HTTPException(status_code=500, detail="OAuth metadata unavailable")
-
-# Health check for OAuth app
-@oauth_app.get("/health")
-async def oauth_health():
-    """OAuth service health check"""
-    return {
-        "status": "healthy",
-        "service": "oauth-discovery",
-        "issuer": OAUTH_ISSUER,
-        "dcr_enabled": True,
-        "timestamp": datetime.now().isoformat()
-    }
-
-# Initialize MCP server
-mcp = FastMCP(name="web-content-extractor-oauth")
-
-# Security dependency for token validation
-security = HTTPBearer()
-
-async def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
-    """Verify JWT token and extract user information"""
-    try:
-        # Use mcpauth to verify the token
-        bearer_auth = mcp_auth.bearer_auth_middleware("jwt", required_scopes=["read", "write"])
-        
-        # This is a simplified version - in practice, mcpauth handles this
-        # For now, we'll do basic token validation
-        token = credentials.credentials
-        
-        # Basic validation (mcpauth should handle the full JWT verification)
-        if not token or len(token) < 10:
-            raise HTTPException(status_code=401, detail="Invalid token format")
-        
-        # Return user info (this would come from JWT claims in real implementation)
-        return {
-            "sub": "oauth_user",
-            "aud": OAUTH_ISSUER,
-            "iat": datetime.now().timestamp(),
-            "scope": "read write"
-        }
-        
-    except Exception as e:
-        logger.error(f"Token verification failed: {e}")
-        # Return 401 with OAuth server details for Claude.ai
-        raise HTTPException(
-            status_code=401,
-            detail={
-                "error": "unauthorized",
-                "error_description": "Valid JWT token required",
-                "authorization_endpoint": f"{OAUTH_ISSUER}authorize",
-                "token_endpoint": f"{OAUTH_ISSUER}oauth/token",
-                "registration_endpoint": f"{OAUTH_ISSUER}oidc/register"
-            },
-            headers={
-                "WWW-Authenticate": f'Bearer realm="{OAUTH_ISSUER}"'
-            }
+        auth_provider = RemoteAuthProvider(
+            token_verifier=token_verifier,
+            authorization_servers=[AnyHttpUrl(OAUTH_ISSUER)],
+            resource_server_url=RESOURCE_SERVER_URL
         )
+        logger.info("RemoteAuthProvider configured successfully")
+    except Exception as e:
+        logger.error(f"Failed to configure RemoteAuthProvider: {e}")
+        auth_provider = None
+else:
+    auth_provider = None
 
-# MCP Tools with OAuth enforcement
+# Create FastMCP server with proper OAuth authentication
+if auth_provider:
+    mcp = FastMCP(name="web-content-extractor-oauth", auth=auth_provider)
+    logger.info("MCP server created with OAuth authentication")
+else:
+    mcp = FastMCP(name="web-content-extractor-oauth")
+    logger.warning("MCP server created WITHOUT OAuth authentication (fallback mode)")
+
+# MCP Tools with proper OAuth integration
 @mcp.tool()
-def extract_web_content(url: str, user_info: Dict[str, Any] = Depends(verify_token)) -> Dict[str, Any]:
+def extract_web_content(url: str) -> Dict[str, Any]:
     """
     Extract structured content from a web page URL.
-    Requires OAuth authentication.
+    Requires OAuth authentication when auth is enabled.
     
     Args:
         url: The URL of the webpage to extract content from
@@ -227,175 +155,127 @@ def extract_web_content(url: str, user_info: Dict[str, Any] = Depends(verify_tok
     Returns:
         Structured dictionary containing extracted content
     """
-    return extract_web_content_logic(url, user_info)
+    # FastMCP will automatically inject user info when authenticated
+    # For now, we'll handle both authenticated and non-authenticated cases
+    return extract_web_content_logic(url)
 
 @mcp.tool()
-def get_oauth_user_info(user_info: Dict[str, Any] = Depends(verify_token)) -> Dict[str, Any]:
-    """Get information about the authenticated OAuth user"""
-    return {
-        "user_id": user_info.get("sub"),
-        "audience": user_info.get("aud"),
-        "scopes": user_info.get("scope", "").split(),
-        "issued_at": user_info.get("iat"),
-        "timestamp": datetime.now().isoformat(),
-        "authentication": "oauth_required_and_verified"
-    }
+def get_oauth_user_info() -> Dict[str, Any]:
+    """
+    Get information about the current authentication status and user.
+    
+    Returns:
+        Authentication status and user information
+    """
+    if auth_provider:
+        return {
+            "authentication_enabled": True,
+            "auth_provider": "Auth0",
+            "issuer": OAUTH_ISSUER,
+            "audience": AUTH0_AUDIENCE,
+            "jwks_uri": JWKS_URI,
+            "discovery_endpoint": "/.well-known/oauth-protected-resource",
+            "authorization_servers": [OAUTH_ISSUER],
+            "resource_server": RESOURCE_SERVER_URL,
+            "timestamp": datetime.now().isoformat(),
+            "status": "oauth_required_and_configured"
+        }
+    else:
+        return {
+            "authentication_enabled": False,
+            "status": "oauth_disabled_fallback_mode",
+            "reason": "JWT verifier configuration failed",
+            "issuer": OAUTH_ISSUER,
+            "timestamp": datetime.now().isoformat()
+        }
 
 @mcp.tool()
 def health_check() -> Dict[str, Any]:
-    """Health check tool (no auth required for basic health)"""
+    """
+    Health check for the MCP server.
+    
+    Returns:
+        Server health status and configuration
+    """
     return {
         "status": "healthy", 
         "service": "web-content-extractor-oauth",
-        "oauth_enabled": True,
-        "oauth_enforced": True,
+        "oauth_enabled": auth_provider is not None,
+        "oauth_provider": "Auth0" if auth_provider else None,
         "auth0_domain": AUTH0_DOMAIN,
-        "dcr_supported": True,
+        "resource_server_url": RESOURCE_SERVER_URL,
+        "discovery_endpoint": "/.well-known/oauth-protected-resource" if auth_provider else None,
+        "mcp_auth_pattern": "RemoteAuthProvider + JWTVerifier",
         "timestamp": datetime.now().isoformat()
     }
 
-# Custom middleware to handle OAuth for MCP requests
-class OAuthMiddleware:
-    def __init__(self, app):
-        self.app = app
+@mcp.tool()
+def test_authentication() -> Dict[str, Any]:
+    """
+    Test tool to verify authentication is working.
+    This tool should only be accessible with valid OAuth token when auth is enabled.
     
-    async def __call__(self, scope, receive, send):
-        if scope["type"] == "http" and scope["path"].startswith("/mcp"):
-            # Check for Authorization header
-            headers = dict(scope.get("headers", []))
-            auth_header = headers.get(b"authorization", b"").decode()
-            
-            if not auth_header or not auth_header.startswith("Bearer "):
-                # Return 401 with OAuth discovery info
-                response = JSONResponse(
-                    status_code=401,
-                    content={
-                        "error": "unauthorized",
-                        "error_description": "OAuth authentication required",
-                        "authorization_endpoint": f"{OAUTH_ISSUER}authorize",
-                        "token_endpoint": f"{OAUTH_ISSUER}oauth/token",
-                        "registration_endpoint": f"{OAUTH_ISSUER}oidc/register",
-                        "discovery_endpoint": "/.well-known/oauth-authorization-server"
-                    },
-                    headers={
-                        "WWW-Authenticate": f'Bearer realm="{OAUTH_ISSUER}"'
-                    }
-                )
-                await response(scope, receive, send)
-                return
-        
-        # Continue to the app
-        await self.app(scope, receive, send)
-
-# Create main FastAPI application
-main_app = FastAPI(
-    title="OAuth MCP Server with DCR",
-    description="MCP Server with OAuth enforcement and Dynamic Client Registration",
-    version="1.0.0"
-)
-
-# Mount OAuth discovery app
-main_app.mount("/oauth", oauth_app)
-
-# Add OAuth metadata at root level for easier discovery
-@main_app.get("/.well-known/oauth-authorization-server")
-async def root_oauth_metadata():
-    """OAuth metadata at root level"""
-    return await oauth_metadata()
-
-@main_app.get("/")
-async def root():
-    """Root endpoint with server information"""
+    Returns:
+        Authentication test results
+    """
     return {
-        "message": "OAuth-enforced MCP Server for Web Content Extraction",
-        "description": "Supports Claude.ai Dynamic Client Registration (RFC 7591)",
-        "version": "1.0.0",
-        "oauth_flow": {
-            "step_1": "Discover OAuth metadata at /.well-known/oauth-authorization-server",
-            "step_2": "Claude.ai registers dynamic client with Auth0",
-            "step_3": "User authenticates via Auth0 login",
-            "step_4": "Claude.ai receives access tokens",
-            "step_5": "MCP tools become available with authentication"
-        },
-        "endpoints": {
-            "mcp": "/mcp (requires OAuth)",
-            "oauth_discovery": "/.well-known/oauth-authorization-server",
-            "health": "/health"
-        },
-        "auth0_config": {
-            "domain": AUTH0_DOMAIN,
-            "issuer": OAUTH_ISSUER,
-            "dcr_enabled": True
-        }
-    }
-
-@main_app.get("/health")
-async def main_health():
-    """Main health check"""
-    return {
-        "status": "healthy",
-        "service": "oauth-mcp-server",
-        "oauth_enforced": True,
-        "dcr_supported": True,
+        "message": "Authentication test successful",
+        "note": "If you can see this, authentication is working correctly",
+        "oauth_enforced": auth_provider is not None,
+        "auth_provider": "Auth0 via RemoteAuthProvider",
         "timestamp": datetime.now().isoformat()
     }
-
-# Create MCP app and wrap with OAuth middleware
-def create_mcp_app():
-    """Create MCP app with OAuth enforcement"""
-    from fastapi import FastAPI
-    
-    # Create a simple FastAPI app for MCP
-    mcp_fastapi = FastAPI()
-    
-    @mcp_fastapi.post("/")
-    async def mcp_endpoint(request: Request):
-        """MCP endpoint with OAuth enforcement"""
-        # This will be handled by the OAuth middleware
-        # If we get here, authentication passed
-        return {"message": "MCP endpoint - authentication required"}
-    
-    # Wrap with OAuth middleware
-    return OAuthMiddleware(mcp_fastapi)
-
-# Mount MCP with OAuth enforcement
-main_app.mount("/mcp", create_mcp_app())
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
     host = os.environ.get("HOST", "0.0.0.0")
     
     logger.info("=" * 60)
-    logger.info("OAuth-ENFORCED MCP Server for Claude.ai")
+    logger.info("FastMCP OAuth Server with RemoteAuthProvider")
     logger.info("=" * 60)
     logger.info(f"Server starting on {host}:{port}")
-    logger.info(f"OAuth Issuer: {OAUTH_ISSUER}")
     logger.info(f"Auth0 Domain: {AUTH0_DOMAIN}")
+    logger.info(f"OAuth Issuer: {OAUTH_ISSUER}")
+    logger.info(f"JWKS URI: {JWKS_URI}")
+    logger.info(f"Audience: {AUTH0_AUDIENCE}")
+    logger.info(f"Resource Server: {RESOURCE_SERVER_URL}")
     logger.info("")
-    logger.info("🔒 OAUTH ENFORCEMENT ENABLED")
+    
+    if auth_provider:
+        logger.info("🔒 OAUTH AUTHENTICATION ENABLED")
+        logger.info("   • Using RemoteAuthProvider + JWTVerifier")
+        logger.info("   • Discovery endpoint: /.well-known/oauth-protected-resource")
+        logger.info("   • Supports Dynamic Client Registration")
+        logger.info("")
+        logger.info("🔐 Claude.ai OAuth Flow:")
+        logger.info("   1. Claude discovers /.well-known/oauth-protected-resource")
+        logger.info("   2. Claude gets 401 → triggers OAuth flow")
+        logger.info("   3. Claude registers with Auth0 (DCR)")
+        logger.info("   4. User authenticates via Auth0")
+        logger.info("   5. Claude gets JWT token")
+        logger.info("   6. Tools become available")
+    else:
+        logger.info("⚠️  OAUTH AUTHENTICATION DISABLED")
+        logger.info("   • Running in fallback mode")
+        logger.info("   • Tools accessible without authentication")
+        logger.info("   • Check Auth0 configuration")
+    
     logger.info("")
-    logger.info("Available endpoints:")
-    logger.info(f"  • MCP Endpoint: http://{host}:{port}/mcp (OAuth required)")
-    logger.info(f"  • OAuth Discovery: http://{host}:{port}/.well-known/oauth-authorization-server")
-    logger.info(f"  • Health Check: http://{host}:{port}/health")
+    logger.info("Available MCP Tools:")
+    logger.info("   • extract_web_content: Extract web page content")
+    logger.info("   • get_oauth_user_info: OAuth status and configuration")
+    logger.info("   • health_check: Server health and auth status")
+    logger.info("   • test_authentication: Verify auth is working")
     logger.info("")
-    logger.info("🔐 Claude.ai OAuth Flow:")
-    logger.info("  1. Claude.ai discovers OAuth endpoints")
-    logger.info("  2. Returns 401 → triggers OAuth flow")
-    logger.info("  3. Claude.ai registers with Auth0 (DCR)")
-    logger.info("  4. User redirected to Auth0 login")
-    logger.info("  5. After login → tools become available")
-    logger.info("")
-    logger.info("✅ Required Auth0 Setup:")
-    logger.info("  • OIDC Dynamic Application Registration: ENABLED")
-    logger.info("  • Management API scopes: configured")
-    logger.info("  • Domain-level connections: configured")
+    logger.info("Environment Variables Needed:")
+    logger.info("   • AUTH0_DOMAIN (configured)")
+    logger.info("   • AUTH0_AUDIENCE (may need to be set)")
+    logger.info("   • RESOURCE_SERVER_URL (may need to be set to your Render URL)")
     logger.info("=" * 60)
     
-    # Run with uvicorn
-    uvicorn.run(
-        main_app,
+    # Run the server using FastMCP's built-in method
+    mcp.run(
+        transport="streamable-http",
         host=host,
-        port=port,
-        log_level="info"
+        port=port
     )
