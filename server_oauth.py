@@ -25,9 +25,8 @@ def extract_web_text(url: str) -> str:
 
 # Run server with streamable_http transport
 if __name__ == "__main__":
-    # Set environment variables for Render
-    os.environ.setdefault("HOST", "0.0.0.0")
-    if "PORT" not in os.environ:
-        os.environ["PORT"] = "8000"
+    port = int(os.environ.get("PORT", 8000))
     
-    mcp.run(transport="streamable-http")
+    print(f"Starting server on 0.0.0.0:{port}")
+    
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=8000)
