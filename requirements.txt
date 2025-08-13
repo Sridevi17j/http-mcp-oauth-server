@@ -8,3 +8,4 @@ pyjwt[crypto]
 authlib
 fastapi
 uvicorn
+mcpauth
