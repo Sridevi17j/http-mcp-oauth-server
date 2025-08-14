@@ -25,7 +25,7 @@ token_verifier = JWTVerifier(
 auth = RemoteAuthProvider(
     token_verifier=token_verifier,
     authorization_servers=[AnyHttpUrl("https://dev-xrlojx8grz2bwyup.us.auth0.com")],
-    resource_server_url=RESOURCE_SERVER_URL
+    resource_server_url=f"{RESOURCE_SERVER_URL}/mcp"
 )
 
 mcp = FastMCP(name="Company API", auth=auth)
