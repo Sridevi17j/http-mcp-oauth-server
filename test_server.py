@@ -3,6 +3,8 @@ from fastmcp.server.auth import RemoteAuthProvider
 from fastmcp.server.auth.providers.jwt import JWTVerifier
 from pydantic import AnyHttpUrl
 import os
+import sys
+from datetime import datetime
 
 AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "dev-xrlojx8grz2bwyup.us.auth0.com")
 AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "https://mcp-web-extractor")
@@ -30,6 +32,8 @@ mcp = FastMCP(name="Company API", auth=auth)
 
 @mcp.tool
 def test_str(name: str) -> str:
+    print(f"Tool called at: {datetime.now()}", file=sys.stderr)
+
     return f"Hello, {name}!"
 
 if __name__ == "__main__":
