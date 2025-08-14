@@ -16,6 +16,7 @@ from urllib.parse import urljoin, urlparse
 from datetime import datetime
 from dotenv import load_dotenv
 from pydantic import AnyHttpUrl
+import json
 
 # Load environment variables
 load_dotenv('.env')
@@ -116,6 +117,15 @@ try:
         issuer=OAUTH_ISSUER,
         audience=AUTH0_AUDIENCE
     )
+    try:
+        jwks_response = requests.get(JWKS_URI)
+        jwks_data = jwks_response.json()
+        logger.info("=" * 60)
+        logger.info("JWKS Endpoint Response:")
+        logger.info(json.dumps(jwks_data, indent=2))
+        logger.info("=" * 60)
+    except Exception as e:
+        logger.error(f"Failed to fetch JWKS for debugging: {e}")
     logger.info(f"JWT Verifier configured for issuer: {OAUTH_ISSUER}")
 except Exception as e:
     logger.error(f"Failed to configure JWT verifier: {e}")
