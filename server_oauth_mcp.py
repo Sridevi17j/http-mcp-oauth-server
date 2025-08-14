@@ -28,7 +28,7 @@ logger = logging.getLogger(__name__)
 #AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "dev-gkajzozs6ojdzi2l.us.auth0.com")
 #AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "https://mcp-server/api")  # You may need to set this
 AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "dev-xrlojx8grz2bwyup.us.auth0.com")
-AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "https://dev-xrlojx8grz2bwyup.us.auth0.com/api/v2/")
+AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "https://mcp-web-extractor")
 RESOURCE_SERVER_URL = os.environ.get("RESOURCE_SERVER_URL", "https://your-render-url.onrender.com")
 
 # OAuth endpoints
