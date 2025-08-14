@@ -6,7 +6,7 @@ import os
 
 AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "dev-xrlojx8grz2bwyup.us.auth0.com")
 AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "https://mcp-web-extractor")
-RESOURCE_SERVER_URL = os.environ.get("RESOURCE_SERVER_URL", "https://your-render-url.onrender.com")
+RESOURCE_SERVER_URL = os.environ.get("RESOURCE_SERVER_URL", "https://http-mcp-oauth-server-2.onrender.com")
 
 # OAuth endpoints
 OAUTH_ISSUER = f"https://{AUTH0_DOMAIN}/"
@@ -23,7 +23,7 @@ token_verifier = JWTVerifier(
 auth = RemoteAuthProvider(
     token_verifier=token_verifier,
     authorization_servers=[AnyHttpUrl("https://dev-xrlojx8grz2bwyup.us.auth0.com")],
-    resource_server_url="https://http-mcp-oauth-server-2.onrender.com"
+    resource_server_url=RESOURCE_SERVER_URL
 )
 
 mcp = FastMCP(name="Company API", auth=auth)
