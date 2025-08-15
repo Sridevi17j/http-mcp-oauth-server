@@ -25,13 +25,20 @@ JWKS_URI = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 # OAuth endpoints  
 #OAUTH_ISSUER = f"https://{AUTH0_DOMAIN}/"  
 #JWKS_URI = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"  
+
+class DebugJWTVerifier(JWTVerifier):  
+    async def verify_token(self, token: str):  
+        print(f"🔍 Received token: {token[:50]}...", file=sys.stderr)  
+        print(f"🔍 Token length: {len(token)}", file=sys.stderr)  
+        # Call the parent method  
+        return await super().verify_token(token)
   
 class Auth0OAuthProvider(RemoteAuthProvider):  
     """Custom OAuth provider that extends RemoteAuthProvider with Auth0 authorization endpoints."""  
       
     def __init__(self, auth0_domain: str, resource_server_url: str, audience: str):  
         # Configure token validation for Auth0  
-        token_verifier = JWTVerifier(  
+        token_verifier = DebugJWTVerifier(  
             jwks_uri=f"https://{auth0_domain}/.well-known/jwks.json",  
             issuer=f"https://{auth0_domain}/",  
             audience=audience  
