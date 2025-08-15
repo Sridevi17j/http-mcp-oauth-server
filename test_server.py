@@ -41,7 +41,8 @@ class Auth0OAuthProvider(RemoteAuthProvider):
         token_verifier = DebugJWTVerifier(  
             jwks_uri=f"https://{auth0_domain}/.well-known/jwks.json",  
             issuer=f"https://{auth0_domain}/",  
-            audience=audience  
+            audience=audience,
+            algorithm="PS256"  # Ensure to specify the algorithm if needed
         )  
           
         # Initialize RemoteAuthProvider  
