@@ -38,7 +38,7 @@ class Auth0OAuthProvider(RemoteAuthProvider):
       
     def __init__(self, auth0_domain: str, resource_server_url: str, audience: str):  
         # Configure token validation for Auth0  
-        token_verifier = JWTVerifier(  
+        token_verifier = DebugJWTVerifier(  
             jwks_uri=f"https://{auth0_domain}/.well-known/jwks.json",  
             issuer=f"https://{auth0_domain}/",  
             audience=audience,
