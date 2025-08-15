@@ -7,6 +7,8 @@ import sys
 from datetime import datetime
 import logging  
 logging.basicConfig(level=logging.DEBUG)
+logging.getLogger("fastmcp.server.auth.providers.jwt").setLevel(logging.DEBUG)
+
 
 from server_oauth_mcp import AUTH0_AUDIENCE
 
@@ -23,7 +25,7 @@ JWKS_URI = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 token_verifier = JWTVerifier(
     jwks_uri=JWKS_URI,
     issuer=OAUTH_ISSUER,
-    audience="https://mcp-content-api"
+    audience="mcp-content-api"
 )
 
 # Create the remote auth provider
