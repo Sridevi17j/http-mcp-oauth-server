@@ -24,8 +24,10 @@ JWKS_URI = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 # Configure token validation for your identity provider
 token_verifier = JWTVerifier(
     jwks_uri=JWKS_URI,
-    issuer=OAUTH_ISSUER,
-    audience="mcp-content-api"
+    #issuer=OAUTH_ISSUER,
+    issuer=None,
+    #audience="mcp-content-api"
+    audience=None
 )
 
 # Create the remote auth provider
