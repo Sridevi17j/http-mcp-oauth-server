@@ -1,5 +1,7 @@
 from fastmcp import FastMCP
-from fastmcp.server.auth import RemoteAuthProvider
+#from fastmcp.server.auth import RemoteAuthProvider
+from fastmcp.server.auth.auth import RemoteAuthProvider
+
 from fastmcp.server.auth.providers.jwt import JWTVerifier
 from pydantic import AnyHttpUrl
 import os
@@ -24,10 +26,10 @@ JWKS_URI = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 # Configure token validation for your identity provider
 token_verifier = JWTVerifier(
     jwks_uri=JWKS_URI,
-    #issuer=OAUTH_ISSUER,
-    issuer=None,
-    #audience="mcp-content-api"
-    audience=None
+    issuer=OAUTH_ISSUER,
+    #issuer=None,
+    audience="mcp-content-api"
+    #audience=None
 )
 
 # Create the remote auth provider
