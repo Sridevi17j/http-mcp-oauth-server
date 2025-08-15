@@ -9,3 +9,4 @@ authlib
 fastapi
 uvicorn
 mcpauth
+git+https://github.com/peterlarnholt/fastmcp-oauth.git
