@@ -5,6 +5,8 @@ from pydantic import AnyHttpUrl
 import os
 import sys
 from datetime import datetime
+import logging  
+logging.basicConfig(level=logging.DEBUG)
 
 from server_oauth_mcp import AUTH0_AUDIENCE
 
@@ -21,7 +23,7 @@ JWKS_URI = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 token_verifier = JWTVerifier(
     jwks_uri=JWKS_URI,
     issuer=OAUTH_ISSUER,
-    audience="mcp-content-api"
+    audience="https://mcp-content-api"
 )
 
 # Create the remote auth provider
@@ -33,10 +35,16 @@ auth = RemoteAuthProvider(
 
 mcp = FastMCP(name="Company API", auth=auth)
 
-@mcp.tool
-def test_str(name: str) -> str:
-    print(f"Tool called at: {datetime.now()}", file=sys.stderr)
+#@mcp.tool
+#def test_str(name: str) -> str:
+#    print(f"Tool called at: {datetime.now()}", file=sys.stderr)
 
+#    return f"Hello, {name}!"
+
+@mcp.tool  
+def test_str(name: str) -> str:  
+    print(f"✅ Tool called successfully at: {datetime.now()}", file=sys.stderr)  
+    print(f"✅ Request reached server!", file=sys.stderr)  
     return f"Hello, {name}!"
 
 if __name__ == "__main__":
