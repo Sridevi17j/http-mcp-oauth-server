@@ -6,8 +6,11 @@ import os
 import sys
 from datetime import datetime
 
+from server_oauth_mcp import AUTH0_AUDIENCE
+
 AUTH0_DOMAIN = os.environ.get("AUTH0_DOMAIN", "dev-xrlojx8grz2bwyup.us.auth0.com")
-AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "https://mcp-web-extractor")
+#AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "https://mcp-web-extractor")
+AUTH0_AUDIENCE = os.environ.get("AUTH0_AUDIENCE", "https://mcp-content-api")
 RESOURCE_SERVER_URL = os.environ.get("RESOURCE_SERVER_URL", "https://http-mcp-oauth-server-2.onrender.com")
 
 # OAuth endpoints
@@ -18,7 +21,7 @@ JWKS_URI = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
 token_verifier = JWTVerifier(
     jwks_uri=JWKS_URI,
     issuer=OAUTH_ISSUER,
-    audience="mcp-web-extractor"
+    audience="mcp-content-api"
 )
 
 # Create the remote auth provider
