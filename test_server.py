@@ -1,5 +1,7 @@
 from fastmcp import FastMCP
 from fastmcp_oauth import GoogleOAuth, require_auth
+import os
+
 
 # Create server
 mcp = FastMCP("My Server")
@@ -14,3 +16,9 @@ app = oauth.install(mcp)
 async def get_user_info(ctx) -> str:
     user = ctx.auth.user
     return f"Hello {user.name}! Email: {user.email}"
+
+
+if __name__ == "__main__":  
+    port = int(os.environ.get("PORT", 8000))  
+    # Start an HTTP server  
+    mcp.run(transport="http", host="0.0.0.0", port=port)
