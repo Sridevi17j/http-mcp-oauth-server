@@ -10,3 +10,4 @@ fastapi
 uvicorn
 mcpauth
 git+https://github.com/peterlarnholt/fastmcp-oauth.git
+git+https://github.com/mcp-auth/python.git
