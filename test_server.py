@@ -11,6 +11,7 @@ from datetime import datetime
 import logging  
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("fastmcp.server.auth.providers.jwt").setLevel(logging.DEBUG)
+from fastapi.middleware.cors import CORSMiddleware
 
 
 from server_oauth_mcp import AUTH0_AUDIENCE
@@ -29,9 +30,9 @@ from server_oauth_mcp import AUTH0_AUDIENCE
 # Configure token validation for your identity provider
 token_verifier = JWTVerifier(
     jwks_uri="https://dev-xrlojx8grz2bwyup.us.auth0.com/.well-known/jwks.json",
-    issuer="https://dev-xrlojx8grz2bwyup.us.auth0.com",
+    issuer="https://dev-xrlojx8grz2bwyup.us.auth0.com/",
     #issuer=None,
-    audience="mcp-content-api"
+    audience="https://mcp-content-api"
     #audience=None
 )
 
@@ -39,7 +40,7 @@ token_verifier = JWTVerifier(
 auth = RemoteAuthProvider(
     token_verifier=token_verifier,
     authorization_servers=[AnyHttpUrl("https://dev-xrlojx8grz2bwyup.us.auth0.com")],
-    resource_server_url="https://http-mcp-oauth-server-2.onrender.com"
+    resource_server_url="https://http-mcp-oauth-server-2.onrender.com/mcp"
 )
 
 mcp = FastMCP(name="Company API", auth=auth)
@@ -55,6 +56,15 @@ def test_str(name: str) -> str:
     print(f"✅ Tool called successfully at: {datetime.now()}", file=sys.stderr)  
     print(f"✅ Request reached server!", file=sys.stderr)  
     return f"Hello, {name}!"
+
+app = mcp.streamable_http_app()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],           # or lock to the Inspector origin you use
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type", "Accept"],
+)
 
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 8000))
