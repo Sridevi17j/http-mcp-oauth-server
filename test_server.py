@@ -29,7 +29,7 @@ from server_oauth_mcp import AUTH0_AUDIENCE
 # Configure token validation for your identity provider
 token_verifier = JWTVerifier(
     jwks_uri="https://dev-xrlojx8grz2bwyup.us.auth0.com/.well-known/jwks.json",
-    issuer="https://dev-xrlojx8grz2bwyup.us.auth0.com/.well-known/jwks.json",
+    issuer="https://dev-xrlojx8grz2bwyup.us.auth0.com",
     #issuer=None,
     audience="mcp-content-api"
     #audience=None
