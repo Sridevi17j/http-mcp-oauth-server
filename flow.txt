@@ -1,0 +1,84 @@
+Flow for what you see in the logs
+
+Discovery
+MCP Inspector reads the authorization servers list from your server metadata. Your code sets
+
+authorization_servers=[AnyHttpUrl("https://dev-xrlojx8grz2bwyup.us.auth0.com")]
+
+
+Therefore Inspector calls the well known OAuth authorization server document:
+GET https://dev-xrlojx8grz2bwyup.us.auth0.com/.well-known/oauth-authorization-server
+It receives issuer, authorization endpoint, token endpoint, jwks uri, and other capabilities.
+Your screenshot and the JSON you pasted match this step.
+
+User authorization and PKCE setup
+Inspector starts the authorization code with PKCE flow using the authorization endpoint from discovery.
+It generates a code verifier and a code challenge, and it sends the user through the login and consent.
+After you complete login, Auth0 redirects back to the Inspector callback with the authorization code.
+
+Token exchange
+Inspector exchanges the code for an access token at the token endpoint:
+POST https://dev-xrlojx8grz2bwyup.us.auth0.com/oauth/token
+Your payload confirms this:
+
+grant_type = authorization_code
+
+code = … from the redirect
+
+code_verifier = … which pairs with the earlier code challenge
+
+redirect_uri = http://localhost:6274/oauth/callback which is the Inspector callback
+
+client_id = JqhmsFk7aOxZmMf1T91GOyN0AQYf8CA3 which is your Inspector client in Auth0
+
+resource = https://http-mcp-oauth-server-2.onrender.com/mcp which points at your resource server url from code
+
+resource_server_url="https://http-mcp-oauth-server-2.onrender.com/mcp"
+
+
+Auth0 returns { access_token, token_type, expires_in }. Your preview shows a bearer access token.
+
+Audience and issuer inside the token
+The JWT you pasted shows
+
+iss equals your Auth0 issuer https://dev-xrlojx8grz2bwyup.us.auth0.com/
+
+aud equals https://mcp-content-api which matches the audience you configured in your server:
+
+audience="https://mcp-content-api"
+
+
+Using the token to call your MCP server
+After Inspector gets the access token, it sends requests to your server at
+https://http-mcp-oauth-server-2.onrender.com/mcp with
+Authorization: Bearer <access_token>.
+Your FastMCP app has the remote auth provider and the JWT verifier wired in:
+
+token_verifier = JWTVerifier(
+    jwks_uri="https://dev-xrlojx8grz2bwyup.us.auth0.com/.well-known/jwks.json",
+    issuer="https://dev-xrlojx8grz2bwyup.us.auth0.com/",
+    audience="https://mcp-content-api"
+)
+auth = RemoteAuthProvider(
+    token_verifier=token_verifier,
+    authorization_servers=[...],
+    resource_server_url="https://http-mcp-oauth-server-2.onrender.com/mcp"
+)
+mcp = FastMCP(name="Company API", auth=auth)
+
+
+So your server validates the Authorization header by fetching signing keys from the jwks uri if needed, and then it checks issuer and audience. When validation passes, your server allows the MCP method calls.
+
+Tool call
+Once the session is established, Inspector will issue MCP traffic such as model introspection and finally your tool call
+test_str(name: str) which prints to stderr and returns Hello, <name> as you coded.
+
+What to expect next in your network panel
+
+After the token response, you should see calls like these going to your Render app:
+
+OPTIONS /mcp and then POST /mcp with a JSON RPC payload and the Authorization header
+
+A first request to read server metadata for MCP, and then subsequent requests that create a session, list tools, and call test_str
+
+If you paste the next request that hits /mcp along with its headers, I will map that to the exact validation path and the MCP message it carried.
