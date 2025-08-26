@@ -1,22 +1,22 @@
-import os
-import sys
-import logging
+import os, sys, logging, uvicorn
 from datetime import datetime
-
-from fastapi import Request
-from fastapi.middleware.cors import CORSMiddleware
-from starlette.middleware.base import BaseHTTPMiddleware
 from pydantic import AnyHttpUrl
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from fastmcp import FastMCP
 from fastmcp.server.auth.auth import RemoteAuthProvider
 from fastmcp.server.auth.providers.jwt import JWTVerifier
+from fastmcp.server.dependencies import get_access_token, AccessToken
 
-# Logging
-logging.basicConfig(level=logging.DEBUG)
+logging.basicConfig(level=logging.INFO)
 logging.getLogger("fastmcp.server.auth.providers.jwt").setLevel(logging.DEBUG)
 
-# ----- Auth setup -----
+#AUTH0_DOMAIN   = "dev-xrlojx8grz2bwyup.us.auth0.com"
+#AUTH0_ISSUER   = f"https://{AUTH0_DOMAIN}/"
+#AUTH0_AUDIENCE = "https://mcp-content-api"
+#ESOURCE_SERVER_URL = "http://127.0.0.1:8000/mcp"
+
 token_verifier = JWTVerifier(
     jwks_uri="https://dev-xrlojx8grz2bwyup.us.auth0.com/.well-known/jwks.json",
     issuer="https://dev-xrlojx8grz2bwyup.us.auth0.com/",
@@ -31,31 +31,34 @@ auth = RemoteAuthProvider(
 
 mcp = FastMCP(name="Company API", auth=auth)
 
-# ----- Tool -----
 @mcp.tool
 def test_str(name: str) -> str:
-    print(f"Tool called at: {datetime.now()}", file=sys.stderr)
+    print(f"✅ Tool called at: {datetime.now()}", file=sys.stderr)
     return f"Hello, {name}!"
 
-# ----- App and middleware -----
-app = mcp.streamable_http_app()
+@mcp.tool
+def whoami() -> dict:
+    token: AccessToken | None = get_access_token()
+    if not token:
+        return {"authenticated": False, "reason": "no token present"}
+    claims = token.claims or {}
+    scope  = claims.get("scope")
+    return {
+        "authenticated": True,
+        "subject": claims.get("sub"),
+        "audience": claims.get("aud"),
+        "issuer": claims.get("iss"),
+        "scopes": scope.split() if isinstance(scope, str) else scope,
+        "expires_at": token.expires_at,
+        "all_claims": claims,
+    }
 
-class LogAuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request: Request, call_next):
-        # The token is sent on the stream creating POST to /mcp
-        if request.url.path == "/mcp" and request.method == "POST":
-            auth = request.headers.get("authorization")
-            if auth and auth.lower().startswith("bearer "):
-                token = auth[len("bearer "):]
-                # Print the full token for now since you asked to verify it
-                # You can trim later to avoid leaking secrets in logs
-                print(f"Access token: {token}", file=sys.stderr)
-            else:
-                print("No Authorization header on /mcp POST", file=sys.stderr)
-        return await call_next(request)
+# Build the streamable app and wrap with FastAPI (so middleware applies)
+asgi = mcp.streamable_http_app(path="/mcp")
+app = FastAPI(lifespan=asgi.lifespan)
+app.mount("/mcp", asgi)
 
-app.add_middleware(LogAuthMiddleware)
-
+# Optional: CORS for browser-based clients
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -64,7 +67,5 @@ app.add_middleware(
     allow_headers=["Authorization", "Content-Type", "Accept"],
 )
 
-# ----- Runner -----
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8000))
-    mcp.run(transport="http", host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=int(os.environ.get("PORT", 8000)), log_level="debug")
