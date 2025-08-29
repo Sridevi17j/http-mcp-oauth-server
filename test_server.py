@@ -2,12 +2,13 @@ from fastapi import dependencies
 from fastmcp import FastMCP
 #from fastmcp.server.auth import RemoteAuthProvider
 from fastmcp.server.auth.auth import RemoteAuthProvider
-
+from fastmcp.server.dependencies import get_access_token, AccessToken  # Add this import
 from fastmcp.server.auth.providers.jwt import JWTVerifier
 from pydantic import AnyHttpUrl
 import os
 import sys
 from datetime import datetime
+import json
 import logging  
 logging.basicConfig(level=logging.DEBUG)
 logging.getLogger("fastmcp.server.auth.providers.jwt").setLevel(logging.DEBUG)
@@ -55,6 +56,16 @@ mcp = FastMCP(name="Company API", auth=auth)
 def test_str(name: str) -> str:  
     print(f"✅ Tool called successfully at: {datetime.now()}", file=sys.stderr)  
     print(f"✅ Request reached server!", file=sys.stderr)  
+    token: AccessToken | None = get_access_token()
+    if token is None:
+        print("❌ No access token found", file=sys.stderr)
+    else:
+        print(f"🔐 Access Token Info:", file=sys.stderr)
+        print(f"   Client ID: {token.client_id}", file=sys.stderr)
+        print(f"   Scopes: {token.scopes}", file=sys.stderr)
+        print(f"   Expires at: {token.expires_at}", file=sys.stderr)
+        print(f"   Claims: {json.dumps(token.claims, indent=2)}", file=sys.stderr)
+
     return f"Hello, {name}!"
 
 app = mcp.streamable_http_app()
